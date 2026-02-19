@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>leaflet-heatmap-layer Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; }
+    #map { width: 100vw; height: 100vh; }
+    .controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 14px 18px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-size: 14px;
+      max-width: 260px;
+    }
+    .controls h3 { margin-bottom: 10px; }
+    .controls label { display: block; margin-bottom: 8px; }
+    .controls input[type="range"] { width: 100%; }
+    .controls .value { float: right; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="controls">
+    <h3>leaflet-heatmap-layer</h3>
+    <label>
+      Radius <span class="value" id="radiusVal">25</span>
+      <input type="range" id="radius" min="5" max="60" value="25">
+    </label>
+    <label>
+      Blur <span class="value" id="blurVal">15</span>
+      <input type="range" id="blur" min="0" max="40" value="15">
+    </label>
+    <label>
+      Points <span class="value" id="pointsVal">1000</span>
+      <input type="range" id="points" min="100" max="5000" step="100" value="1000">
+    </label>
+    <p style="margin-top:8px; color:#666; font-size:12px;">
+      Click the map to add points. Drag sliders to adjust.
+    </p>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="leaflet-heatmap-layer.umd.js"></script>
+  <script>
+    const map = L.map('map').setView([51.505, -0.09], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Generate random points around a center
+    function generatePoints(center, count) {
+      const points = [];
+      for (let i = 0; i < count; i++) {
+        const lat = center[0] + (Math.random() - 0.5) * 0.03;
+        const lng = center[1] + (Math.random() - 0.5) * 0.06;
+        const intensity = Math.random();
+        points.push([lat, lng, intensity]);
+      }
+      return points;
+    }
+
+    // Create clusters around a few hotspots for a realistic look
+    function generateClusteredPoints(count) {
+      const hotspots = [
+        [51.505, -0.09],
+        [51.51, -0.08],
+        [51.50, -0.10],
+        [51.515, -0.095],
+        [51.498, -0.075],
+      ];
+      const points = [];
+      const perCluster = Math.floor(count / hotspots.length);
+      for (const hs of hotspots) {
+        for (let i = 0; i < perCluster; i++) {
+          const lat = hs[0] + (Math.random() - 0.5) * 0.012;
+          const lng = hs[1] + (Math.random() - 0.5) * 0.024;
+          const intensity = 0.3 + Math.random() * 0.7;
+          points.push([lat, lng, intensity]);
+        }
+      }
+      return points;
+    }
+
+    let data = generateClusteredPoints(1000);
+    const heat = L.heatLayer(data, { radius: 25, blur: 15 }).addTo(map);
+
+    // Controls
+    const radiusSlider = document.getElementById('radius');
+    const blurSlider = document.getElementById('blur');
+    const pointsSlider = document.getElementById('points');
+
+    radiusSlider.addEventListener('input', (e) => {
+      document.getElementById('radiusVal').textContent = e.target.value;
+      heat.setOptions({ radius: Number(e.target.value) });
+    });
+
+    blurSlider.addEventListener('input', (e) => {
+      document.getElementById('blurVal').textContent = e.target.value;
+      heat.setOptions({ blur: Number(e.target.value) });
+    });
+
+    pointsSlider.addEventListener('input', (e) => {
+      const count = Number(e.target.value);
+      document.getElementById('pointsVal').textContent = count;
+      data = generateClusteredPoints(count);
+      heat.setLatLngs(data);
+    });
+
+    // Click to add points
+    map.on('click', (e) => {
+      const point = [e.latlng.lat, e.latlng.lng, 0.8];
+      data.push(point);
+      heat.addLatLng(point);
+    });
+  </script>
+</body>
+</html>

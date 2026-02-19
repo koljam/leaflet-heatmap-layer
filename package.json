@@ -1,0 +1,58 @@
+{
+	"name": "leaflet-heatmap-layer",
+	"version": "1.0.0",
+	"description": "A modern heatmap layer plugin for Leaflet",
+	"main": "dist/leaflet-heatmap-layer.cjs.js",
+	"module": "dist/leaflet-heatmap-layer.esm.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/leaflet-heatmap-layer.esm.js",
+			"require": "./dist/leaflet-heatmap-layer.cjs.js"
+		}
+	},
+	"files": [
+		"dist/",
+		"README.md"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "node build.mjs && tsc --emitDeclarationOnly",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"demo": "node build.mjs && cp dist/leaflet-heatmap-layer.umd.js docs/ && npx serve docs",
+		"demo:watch": "node dev-server.mjs",
+		"prepublishOnly": "npm run build"
+	},
+	"peerDependencies": {
+		"leaflet": "^1.0.0"
+	},
+	"devDependencies": {
+		"@types/leaflet": "^1.9.8",
+		"esbuild": "^0.27.3",
+		"jsdom": "^24.0.0",
+		"leaflet": "^1.9.4",
+		"tslib": "^2.6.2",
+		"typescript": "^5.3.3",
+		"vitest": "^1.2.0"
+	},
+	"keywords": [
+		"leaflet",
+		"heatmap",
+		"leaflet-plugin",
+		"maps",
+		"visualization",
+		"canvas"
+	],
+	"author": "koljam",
+	"license": "MIT",
+	"homepage": "https://github.com/koljam/leaflet-heatmap-layer#readme",
+	"bugs": {
+		"url": "https://github.com/koljam/leaflet-heatmap-layer/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/koljam/leaflet-heatmap-layer.git"
+	}
+}
