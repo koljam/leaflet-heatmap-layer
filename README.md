@@ -4,6 +4,10 @@ A modern heatmap layer plugin for [Leaflet](https://leafletjs.com/).
 
 This Plugin is inspired by [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat), built from scratch under the MIT license. It fixes some long-standing bugs and ships as a proper ES module with TypeScript declarations.
 
+## Demo
+
+[Check out the demo!](https://koljam.github.io/leaflet-heatmap-layer/)
+
 ## Installation
 
 ```bash
