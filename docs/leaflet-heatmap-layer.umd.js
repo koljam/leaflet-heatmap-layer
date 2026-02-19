@@ -226,7 +226,6 @@ var LeafletHeatmapLayer = (() => {
         pane.appendChild(this._canvas);
       }
       map.on("moveend", this._onMoveEnd, this);
-      map.on("zoomstart", this._onZoomStart, this);
       map.on("zoomanim", this._onZoomAnim, this);
       this._onMoveEnd();
       return this;
@@ -246,7 +245,6 @@ var LeafletHeatmapLayer = (() => {
         pane.removeChild(this._canvas);
       }
       map.off("moveend", this._onMoveEnd, this);
-      map.off("zoomstart", this._onZoomStart, this);
       map.off("zoomanim", this._onZoomAnim, this);
       return this;
     }
@@ -295,16 +293,18 @@ var LeafletHeatmapLayer = (() => {
       this._canvas.style.position = "absolute";
       this._canvas.style.pointerEvents = "none";
       this._canvas.style.willChange = "transform";
+      this._canvas.style.transformOrigin = "0 0";
+      const animated = this._map.options.zoomAnimation && L2.Browser.any3d;
+      L2.DomUtil.addClass(
+        this._canvas,
+        "leaflet-zoom-" + (animated ? "animated" : "hide")
+      );
       this._renderer = new HeatRenderer(this._canvas, {
         radius: this._options.radius,
         blur: this._options.blur,
         minOpacity: this._options.minOpacity,
         gradient: this._options.gradient
       });
-    }
-    /** Track zoom start so moveend knows whether to crossfade. */
-    _onZoomStart() {
-      this._zooming = true;
     }
     /** Handle moveend: reposition canvas and redraw. */
     _onMoveEnd() {
@@ -324,14 +324,23 @@ var LeafletHeatmapLayer = (() => {
         this._startCrossfade(duration);
       }
     }
-    /** Handle zoomanim: apply CSS transform for smooth zoom transitions. */
+    /**
+     * Handle zoomanim: apply CSS transform for smooth zoom transitions.
+     *
+     * Computes where the canvas top-left would be in the new zoom's layer
+     * space, then applies translate + scale with transform-origin 0 0.
+     * Same approach as Leaflet's ImageOverlay._animateZoom.
+     */
     _onZoomAnim(e) {
       if (!this._map || !this._canvas) return;
-      const scale = this._map.getZoomScale(e.zoom);
-      const offset = this._map.getSize().multiplyBy(0.5).subtract(
-        this._map.project(e.center, e.zoom).subtract(this._map.getPixelOrigin())
-      );
-      L2.DomUtil.setTransform(this._canvas, offset, scale);
+      this._zooming = true;
+      const map = this._map;
+      const scale = map.getZoomScale(e.zoom);
+      const canvasPos = L2.DomUtil.getPosition(this._canvas);
+      const topLeftLatLng = map.layerPointToLatLng(canvasPos);
+      const layerTopLeft = map.containerPointToLayerPoint([0, 0]);
+      const newPos = map.project(topLeftLatLng, e.zoom).subtract(map.project(e.center, e.zoom)).add(map.getSize().divideBy(2)).add(layerTopLeft).round();
+      L2.DomUtil.setTransform(this._canvas, newPos, scale);
     }
     /** Copy the current canvas content + CSS transform to a snapshot canvas for crossfade. */
     _takeSnapshot() {
@@ -414,20 +423,18 @@ var LeafletHeatmapLayer = (() => {
         }
       }
       const effectiveMax = this._options.max ?? Math.max(autoMax, 1e-10);
-      const paneOffset = map.containerPointToLayerPoint([0, 0]);
-      const gridOffsetX = (paneOffset.x % cellSize + cellSize) % cellSize;
-      const gridOffsetY = (paneOffset.y % cellSize + cellSize) % cellSize;
+      const topLeft = map.containerPointToLayerPoint([0, 0]);
       const grid = {};
       const pixelPoints = [];
       for (const p of this._latlngs) {
         const latlng = this._toLatLng(p);
         if (!paddedBounds.contains(latlng)) continue;
-        const point = map.latLngToContainerPoint(latlng);
-        const x = point.x;
-        const y = point.y;
+        const lp = map.latLngToLayerPoint(latlng);
+        const x = lp.x - topLeft.x;
+        const y = lp.y - topLeft.y;
         const intensity = this._getIntensity(p) * v;
-        const gx = Math.floor((x - gridOffsetX) / cellSize);
-        const gy = Math.floor((y - gridOffsetY) / cellSize);
+        const gx = Math.floor(lp.x / cellSize);
+        const gy = Math.floor(lp.y / cellSize);
         const key = `${gx}:${gy}`;
         const cell = grid[key];
         if (cell) {
@@ -445,9 +452,9 @@ var LeafletHeatmapLayer = (() => {
         if (totalIntensity === 0) continue;
         pixelPoints.push([
           cell[0] / totalIntensity,
-          // weighted avg x
+          // weighted avg x (canvas-local)
           cell[1] / totalIntensity,
-          // weighted avg y
+          // weighted avg y (canvas-local)
           totalIntensity / effectiveMax
           // normalized intensity (0-1)
         ]);

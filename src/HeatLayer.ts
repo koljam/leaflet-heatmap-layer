@@ -70,7 +70,6 @@ export class HeatLayer extends L.Layer {
     }
 
     map.on('moveend', this._onMoveEnd, this);
-    map.on('zoomstart', this._onZoomStart, this);
     map.on('zoomanim', this._onZoomAnim, this);
 
     this._onMoveEnd();
@@ -97,7 +96,6 @@ export class HeatLayer extends L.Layer {
     }
 
     map.off('moveend', this._onMoveEnd, this);
-    map.off('zoomstart', this._onZoomStart, this);
     map.off('zoomanim', this._onZoomAnim, this);
 
     return this;
@@ -153,12 +151,17 @@ export class HeatLayer extends L.Layer {
   private _createCanvas(): void {
     this._canvas = document.createElement('canvas');
     this._canvas.style.position = 'absolute';
-
-    // Pointer events pass through to the map
     this._canvas.style.pointerEvents = 'none';
-
-    // Enable hardware acceleration hint
     this._canvas.style.willChange = 'transform';
+    this._canvas.style.transformOrigin = '0 0';
+
+    // Match original Leaflet.heat: mark as zoom-animated so Leaflet
+    // handles visibility correctly during zoom transitions.
+    const animated = this._map!.options.zoomAnimation && L.Browser.any3d;
+    L.DomUtil.addClass(
+      this._canvas,
+      'leaflet-zoom-' + (animated ? 'animated' : 'hide'),
+    );
 
     this._renderer = new HeatRenderer(this._canvas, {
       radius: this._options.radius,
@@ -166,11 +169,6 @@ export class HeatLayer extends L.Layer {
       minOpacity: this._options.minOpacity,
       gradient: this._options.gradient,
     });
-  }
-
-  /** Track zoom start so moveend knows whether to crossfade. */
-  private _onZoomStart(): void {
-    this._zooming = true;
   }
 
   /** Handle moveend: reposition canvas and redraw. */
@@ -201,19 +199,40 @@ export class HeatLayer extends L.Layer {
     }
   }
 
-  /** Handle zoomanim: apply CSS transform for smooth zoom transitions. */
+  /**
+   * Handle zoomanim: apply CSS transform for smooth zoom transitions.
+   *
+   * Computes where the canvas top-left would be in the new zoom's layer
+   * space, then applies translate + scale with transform-origin 0 0.
+   * Same approach as Leaflet's ImageOverlay._animateZoom.
+   */
   private _onZoomAnim(e: L.ZoomAnimEvent): void {
     if (!this._map || !this._canvas) return;
 
-    const scale = this._map.getZoomScale(e.zoom);
-    const offset = this._map
-      .getSize()
-      .multiplyBy(0.5)
-      .subtract(
-        this._map.project(e.center, e.zoom).subtract(this._map.getPixelOrigin())
-      );
+    // Set the zooming flag here (not zoomstart) so crossfade only triggers
+    // when an actual zoom animation occurred.
+    this._zooming = true;
 
-    L.DomUtil.setTransform(this._canvas, offset, scale);
+    const map = this._map;
+    const scale = map.getZoomScale(e.zoom);
+
+    // The canvas's current position in layer space (set by _onMoveEnd)
+    const canvasPos = L.DomUtil.getPosition(this._canvas);
+    // Geographic location of the canvas top-left corner
+    const topLeftLatLng = map.layerPointToLatLng(canvasPos);
+
+    // Where this geographic point would be in the new zoom's layer space.
+    // Equivalent to map._latLngToNewLayerPoint(latlng, zoom, center):
+    //   project(latlng, zoom) - project(center, zoom) + size/2 + layerTopLeft
+    const layerTopLeft = map.containerPointToLayerPoint([0, 0]);
+    const newPos = map
+      .project(topLeftLatLng, e.zoom)
+      .subtract(map.project(e.center, e.zoom))
+      .add(map.getSize().divideBy(2))
+      .add(layerTopLeft)
+      .round();
+
+    L.DomUtil.setTransform(this._canvas, newPos, scale);
   }
 
   /** Copy the current canvas content + CSS transform to a snapshot canvas for crossfade. */
@@ -325,16 +344,18 @@ export class HeatLayer extends L.Layer {
     }
     const effectiveMax = this._options.max ?? Math.max(autoMax, 1e-10);
 
-    // Stabilize grid cells across pans by offsetting with the map pane position.
-    // Without this, panning causes points to fall into different grid cells,
-    // producing flickering intensity changes.
-    const paneOffset = map.containerPointToLayerPoint([0, 0]);
-    const gridOffsetX = ((paneOffset.x % cellSize) + cellSize) % cellSize;
-    const gridOffsetY = ((paneOffset.y % cellSize) + cellSize) % cellSize;
+    // Layer-space origin of the viewport. Used to:
+    // 1. Convert layer points to canvas-local coordinates for drawing
+    // 2. Compute stable grid offsets (layer points don't shift on pan)
+    const topLeft = map.containerPointToLayerPoint([0, 0]);
 
     // --- Pass 2: grid-cluster visible points ---
     // Points are aggregated into grid cells of size `cellSize` pixels.
     // Multiple points in the same cell are merged by weighted average.
+    //
+    // Grid keys use layer-space coordinates which are stable across pans.
+    // Without this, panning causes points to fall into different grid cells,
+    // producing flickering intensity changes.
     const grid: Record<string, [number, number, number, number]> = {}; // key -> [sumX, sumY, sumIntensity, count]
     const pixelPoints: HeatPoint[] = [];
 
@@ -342,20 +363,23 @@ export class HeatLayer extends L.Layer {
       const latlng = this._toLatLng(p);
       if (!paddedBounds.contains(latlng)) continue;
 
-      const point = map.latLngToContainerPoint(latlng);
-      const x = point.x;
-      const y = point.y;
+      // Layer point: stable across pans (used for grid cell assignment)
+      const lp = map.latLngToLayerPoint(latlng);
+
+      // Canvas-local coordinates for drawing
+      const x = lp.x - topLeft.x;
+      const y = lp.y - topLeft.y;
       const intensity = this._getIntensity(p) * v;
 
-      // Grid cell key (stabilized with pane offset)
-      const gx = Math.floor((x - gridOffsetX) / cellSize);
-      const gy = Math.floor((y - gridOffsetY) / cellSize);
+      // Grid cell key in stable layer space
+      const gx = Math.floor(lp.x / cellSize);
+      const gy = Math.floor(lp.y / cellSize);
       const key = `${gx}:${gy}`;
 
       const cell = grid[key];
       if (cell) {
-        cell[0] += x * intensity; // weighted x
-        cell[1] += y * intensity; // weighted y
+        cell[0] += x * intensity; // weighted x (canvas-local)
+        cell[1] += y * intensity; // weighted y (canvas-local)
         cell[2] += intensity;
         cell[3]++;
       } else {
@@ -370,8 +394,8 @@ export class HeatLayer extends L.Layer {
       if (totalIntensity === 0) continue;
 
       pixelPoints.push([
-        cell[0] / totalIntensity, // weighted avg x
-        cell[1] / totalIntensity, // weighted avg y
+        cell[0] / totalIntensity, // weighted avg x (canvas-local)
+        cell[1] / totalIntensity, // weighted avg y (canvas-local)
         totalIntensity / effectiveMax, // normalized intensity (0-1)
       ]);
     }
