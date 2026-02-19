@@ -16,7 +16,7 @@
 		"dist/",
 		"README.md"
 	],
-	"sideEffects": false,
+	"sideEffects": true,
 	"scripts": {
 		"build": "node build.mjs && tsc --emitDeclarationOnly",
 		"test": "vitest run",

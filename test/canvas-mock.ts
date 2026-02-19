@@ -1,9 +1,3 @@
-/**
- * Minimal CanvasRenderingContext2D mock for jsdom testing.
- * jsdom doesn't implement canvas natively, so we provide stubs
- * for the methods used by HeatRenderer.
- */
-
 class MockImageData {
   data: Uint8ClampedArray;
   width: number;
@@ -75,7 +69,6 @@ class MockCanvasRenderingContext2D {
   putImageData(_imageData: MockImageData, _dx: number, _dy: number): void {}
 }
 
-// Patch HTMLCanvasElement.prototype.getContext to return our mock
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
 export function installCanvasMock(): void {

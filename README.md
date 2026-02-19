@@ -35,7 +35,7 @@ const points = [
 L.heatLayer(points, { radius: 25 }).addTo(map);
 ```
 
-Or with ES module imports:
+You can also use named exports directly:
 
 ```js
 import { HeatLayer, heatLayer } from 'leaflet-heatmap-layer';
@@ -51,6 +51,7 @@ import { HeatLayer, heatLayer } from 'leaflet-heatmap-layer';
 | `maxZoom` | `number` | map's maxZoom | Zoom level where points reach full intensity |
 | `max` | `number` | *auto* | Manual intensity cap. When omitted, computed automatically per redraw |
 | `gradient` | `object` | `{0.4:'blue', 0.6:'cyan', 0.7:'lime', 0.8:'yellow', 1:'red'}` | Color gradient stops |
+| `zoomCrossfadeDuration` | `number` | `250` | Duration in ms to crossfade between zoom levels (0 to disable) |
 
 ## Methods
 
@@ -75,6 +76,11 @@ The API is intentionally compatible. For most users:
 
 1. Replace `leaflet.heat` with `leaflet-heatmap-layer` in `package.json`
 2. Update your import/script tag
+
+Key differences from Leaflet.heat:
+- Intensity is automatically normalized across **all** data points per redraw, fixing the [intensity scaling bug](https://github.com/Leaflet/Leaflet.heat/issues/78)
+- Full TypeScript support with exported types
+- ES module, CommonJS, and UMD builds
 
 ## License
 
